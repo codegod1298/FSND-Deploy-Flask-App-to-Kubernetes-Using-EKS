@@ -60,7 +60,7 @@ $ curl --location --request GET '192.168.99.101:80/contents' --header "Authoriza
 
 ## To Deploy the container
 
-1. Create the cluster
+1. Create a Kubernetes (EKS) Cluster
 
 ```bash
 $ eksctl create cluster --name simple-jwt-api --tags "type=education,usage=full stack developer nanodegree" --nodegroup-name full-stack-developer
@@ -72,8 +72,63 @@ $ eksctl create cluster --name simple-jwt-api --tags "type=education,usage=full 
 $ kubectl get nodes
 ```
 
-3. Delete the cluster
+3. Set Up an IAM Role for the Cluster
+
+**Create an IAM role that CodeBuild can use to interact with EKS**
+
+```bash
+for /f %i in ('aws sts get-caller-identity --query Account --output text') do set ACCOUNT_ID=%i
+```
+
+```bash
+set TRUST="{ \"Version\": \"2012-10-17\", \"Statement\": [ { \"Effect\": \"Allow\", \"Principal\": { \"AWS\": \"arn:aws:iam::%ACCOUNT_ID%:root\" }, \"Action\": \"sts:AssumeRole\" } ] }"
+```
+
+```bash
+aws iam create-role --role-name UdacityFlaskDeployCBKubectlRole --assume-role-policy-document %TRUST% --output text --query 'Role.Arn'
+```
+
+```bash
+set EKS_DESCRIBE="{ \"Version\": \"2012-10-17\", \"Statement\": [ { \"Effect\": \"Allow\", \"Action\": [ \"eks:Describe*\", \"ssm:GetParameters\" ], \"Resource\": \"*\" } ] }"
+```
+
+```bash
+echo %EKS_DESCRIBE%
+```
+
+```bash
+aws iam put-role-policy --role-name UdacityFlaskDeployCBKubectlRole --policy-name eks-describe --policy-document %EKS_DESCRIBE%
+```
+
+```bash
+kubectl get -n kube-system configmap/aws-auth -o yaml > %USERPROFILE%\AppData\Local\Temp\aws-auth-patch.yml
+```
+
+In the data/mapRoles section of this document add, replacing <ACCOUNT_ID> with your account id:
+
+```bash
+echo %ACCOUNT_ID%
+```
+
+```yaml
+- rolearn: arn:aws:iam::<ACCOUNT_ID>:role/UdacityFlaskDeployCBKubectlRole
+    username: build
+    groups:
+      - system:masters
+```
+
+Now update your cluster's configmap:
+
+Important: Use Git BASH to perform this execution
+
+```bash
+kubectl patch configmap/aws-auth -n kube-system --patch "$(cat $USERPROFILE/AppData/Local/Temp/aws-auth-patch.yml)"
+```
+
+4. Delete the cluster
 
 ```bash
 $ eksctl delete cluster simple-jwt-api
 ```
+
+My post https://knowledge.udacity.com/questions/195608
